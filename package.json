@@ -1,0 +1,24 @@
+{
+  "name": "@scinorandex/slex",
+  "version": "0.0.1",
+  "description": "Yet another lexer generator",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/scinscinscin/slex"
+  },
+  "keywords": [
+    "lexer",
+    "lexer-generator",
+    "programming-languages"
+  ],
+  "author": "scinorandex",
+  "license": "MIT",
+  "devDependencies": {},
+  "resolutions": {},
+  "dependencies": {}
+}

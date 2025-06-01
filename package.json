@@ -1,7 +1,7 @@
 {
   "name": "@scinorandex/slex",
-  "version": "0.0.1",
-  "description": "Yet another lexer generator",
+  "version": "0.0.3",
+  "description": "No fuss lexer generator",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

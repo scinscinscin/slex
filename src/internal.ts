@@ -1,4 +1,5 @@
-import { Character } from "./utils/Character";
+import { initializeCharacter } from "./utils/Character";
+const Character = initializeCharacter({});
 
 export class RegexEngineParsingResult {
   success: boolean;
@@ -40,15 +41,16 @@ export abstract class RegexNode<TokenType> {
 
   public abstract toString(): String;
 
-  public abstract getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): Array<string>;
+  public abstract getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    negated: boolean
+  ): string[];
 }
 
 class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
-  nodes: RegexNode<TokenType>[];
-
-  public constructor(nodes: RegexNode<TokenType>[]) {
+  public constructor(public readonly nodes: RegexNode<TokenType>[]) {
     super();
-    this.nodes = nodes;
   }
 
   public toString(): String {
@@ -59,7 +61,7 @@ class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
     return ret;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
     let caches: string[] = [""];
 
     for (const node of this.nodes) {
@@ -67,7 +69,7 @@ class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
 
       for (const cache of caches) {
         const rest = restString.replace(cache, "");
-        const nextMatches = node.getMatches(rest, environment);
+        const nextMatches = node.getMatches(rest, environment, negated);
         nextCaches.push(...nextMatches.map((m) => cache + m));
       }
 
@@ -95,32 +97,47 @@ class RegexEitherNode<TokenType> extends RegexNode<TokenType> {
     return ret;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
     let matches: string[] = [];
-    for (const node of this.nodes) matches.push(...node.getMatches(restString, environment));
+    for (const node of this.nodes) matches.push(...node.getMatches(restString, environment, negated));
     return matches;
   }
 }
 
 class RegexLiteralNode<TokenType> extends RegexNode<TokenType> {
-  ch: string;
-
-  public constructor(ch: string) {
+  public constructor(public readonly ch: string) {
     super();
-    this.ch = ch;
   }
 
   public toString(): string {
     return "" + this.ch;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
     if (restString.length === 0) return [];
 
     const matches: string[] = [];
     const starting = restString.charAt(0);
-    if (starting === this.ch) matches.push("" + starting);
+    if (negated === false && starting === this.ch) matches.push("" + starting);
+    else if (negated === true && starting !== this.ch) matches.push("" + starting);
     return matches;
+  }
+}
+
+export class RegexIntrinsicNode<TokenType> extends RegexNode<TokenType> {
+  public constructor(
+    public readonly intrinsicName: string,
+    public readonly calculator: (restString: string, environment: Map<string, RegexNode<TokenType>>) => string[]
+  ) {
+    super();
+  }
+
+  public toString(): string {
+    return "<" + this.intrinsicName + ">";
+  }
+
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
+    return this.calculator(restString, environment);
   }
 }
 
@@ -136,11 +153,11 @@ class RegexVariableNode<TokenType> extends RegexNode<TokenType> {
     return "<" + this.variableName + ">";
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
     if (!environment.has(this.variableName)) return [];
 
     const rootNode = environment.get(this.variableName);
-    return rootNode!.getMatches(restString, environment);
+    return rootNode!.getMatches(restString, environment, negated);
   }
 }
 
@@ -148,6 +165,7 @@ enum RegexGroupingNodeModifiers {
   NONE,
   NONE_OR_MORE,
   ONE_OR_MORE,
+  NEGATION,
 }
 
 class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
@@ -176,8 +194,8 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
     );
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
-    const initialMatches: string[] = this.internalNode.getMatches(restString, environment);
+  public _getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+    const initialMatches: string[] = this.internalNode.getMatches(restString, environment, negated);
 
     if (initialMatches.length === 0) {
       if (this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE) initialMatches.push("");
@@ -194,7 +212,7 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
         const rest: string = restString.replace(match, "");
         if (rest.length === 0) continue;
 
-        const nextMatch = this.internalNode.getMatches(rest, environment);
+        const nextMatch = this.internalNode.getMatches(rest, environment, negated);
         nextMatches.push(...nextMatch.map((m) => match + m));
       }
 
@@ -204,6 +222,12 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
     }
 
     return matches;
+  }
+
+  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+    if (this.modifier === RegexGroupingNodeModifiers.NEGATION)
+      return this.internalNode.getMatches(restString, environment, true);
+    return this._getMatches(restString, environment, negated);
   }
 }
 
@@ -267,6 +291,9 @@ export class RegexParser<TokenType> {
         } else if (this.tokens[this.currentTokenIndex].type === RegexTokenType.PLUS) {
           modifier = RegexGroupingNodeModifiers.ONE_OR_MORE;
           this.currentTokenIndex++;
+        } else if (this.tokens[this.currentTokenIndex].type === RegexTokenType.EXCLAMATION) {
+          modifier = RegexGroupingNodeModifiers.NEGATION;
+          this.currentTokenIndex++;
         }
 
         return new RegexGroupingNode(internalNode, modifier);
@@ -303,6 +330,7 @@ enum RegexTokenType {
   LITERAL,
   PIPE,
   ASTERISK,
+  EXCLAMATION,
   PLUS,
   VARIABLE,
   LPAREN,
@@ -348,6 +376,9 @@ export class RegexLexer {
         this.index++;
       } else if (currentCharacter === "*") {
         this.tokens.push(new RegexToken(RegexTokenType.ASTERISK, currentCharacter));
+        this.index++;
+      } else if (currentCharacter === "!") {
+        this.tokens.push(new RegexToken(RegexTokenType.EXCLAMATION, currentCharacter));
         this.index++;
       } else if (currentCharacter === "(") {
         this.tokens.push(new RegexToken(RegexTokenType.LPAREN, currentCharacter));

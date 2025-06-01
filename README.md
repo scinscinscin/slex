@@ -1,6 +1,6 @@
 ## Slex - Scin's Lexing Library
 
-Slex allows developers to easily create lexers using regular expressions that can emit tokens. It currently only supports "C-like" languages where whitespace is ignored.
+Slex allows developers to easily create lexers using regular expressions that can emit tokens.
 
 ## Getting started
 
@@ -35,9 +35,8 @@ lexerGenerator.addRule("plus", "$+", TokenType.PLUS);
 lexerGenerator.addRule("minus", "$-", TokenType.MINUS);
 lexerGenerator.addRule("star", "$*", TokenType.STAR);
 lexerGenerator.addRule("forward_slash", "$/", TokenType.SLASH);
-lexerGenerator.addRule("digit", "0|1|2|3|4|5|6|7|8|9");
-lexerGenerator.addRule("float_number", "(${digit})+$.(${digit})+");
-lexerGenerator.addRule("decimal_number", "(${digit})+");
+lexerGenerator.addRule("float_number", "(${__decimal_digit})+$.(${__decimal_digit})+");
+lexerGenerator.addRule("decimal_number", "(${__decimal_digit})+");
 lexerGenerator.addRule("number_literal", "${float_number}|${decimal_number}", TokenType.NUMBER);
 ```
 
@@ -56,14 +55,8 @@ const lexer = lexerGenerator.generate(`2.4 + 3.5 * 1 / 456.789`, () => ({}));
 while (lexer.hasNextToken()) {
   const token = lexer.getNextToken();
   console.log(
-    "Token: " +
-      TokenType[token.type] +
-      ". Lexeme: " +
-      token.lexeme +
-      ". Column: " +
-      token.column +
-      ". Line: " +
-      token.line
+    "Token: " + TokenType[token.type] +  ". Lexeme: " + token.lexeme + 
+    ". Column: " + token.column + ". Line: " + token.line
   );
 }
 ```
@@ -88,8 +81,75 @@ Token: NUMBER. Lexeme: 456.789. Column: 16. Line: 1
 |    Either     |                              Represents possibilities between different rules.                               |  $R1 \| R2$  |
 |  Kleene-star  | Groups multiple rules together and dictates that they may appear zero or multiple times in the input string. |   $(R1)*$    |
 |  Kleene-plus  |     Groups multiple rules together and dictate that they must appear at least once in the input string.      |   $(R1)+$    |
+|   Negation    |  Groups multiple rules together and negates them. This is only meaningful with groups of single characters.  |   $(R1)!$    |
 |   Grouping    |                     Groups multiple rules together so they are treated as a single rule.                     |    $(R1)$    |
 |    Literal    |                                    Represents a single character literal.                                    |     $a$      |
 |   Variable    |                                    Represents another regular definition.                                    | $\$\{name\}$ |
 
 For literals, non-alphanumeric characters must be escaped using the $ symbol. Example: to represent the tab character as a character literal, it must be encoded in the regular expression as "$\t"
+
+
+### Built in character classes
+
+Slex contains built-in unicode character classes to match frequently used sets of literals. These are available as variables inside regular expression strings.
+
+ - `__decimal_digit` - matches `0` - `9`
+ - `__letter` - matches Unicode character classes `L`
+ - `__uppercase_letter` - matches Unicode character classes `Lu`
+ - `__lowercase_letter` - matches Unicode character classes `Ll`
+ - `__symbols` - matches Unicode character `P` and `S`
+ - `__control_character` - matches Unicode character classes `Cc`
+
+## API Reference
+
+### `Slex<TokenType, Metadata>` class
+
+**Constructor**
+
+`new Slex<TokenType, Metadata>(SlexOptions)` - creates a new lexer generator instance. `SlexOptions` interface has the following properties:
+ - `EOF_TYPE: TokenType;` - specifies the TokenType to be used when the end of the file has been reached.
+ - `isHigherPrecedence: (options: { current: TokenType; next: TokenType }) => boolean;` - specifies the precendence order of tokens types
+ - `whitespaceCharacters?: string[];` - specifies the list of whitespace tokens to skip in the input. Defaults to `[" ", "\n", "\r", "\t"]`
+   -  Before attempting to match a token, the scanner removes all characters at the beginning of the input belogning in this array. 
+ - `ignoreTokens?: TokenType[];` - specify a list of tokens to match but not emit, skipping them when encountered
+
+**Methods:**
+
+ - `addRule(definitionName: string, regularExpression: string, emit?: TokenType, transformer?: (lexeme: string) => string): void`
+   -  `definitionName: string` - the name of the regular definition
+   -  `regularExpression: string` - the regular expression that matches the token
+   -  `emit?: TokenType` - the type of the token to be emitted when the regular expression has been matched. When not provided, the definition is only used when called from a variable in another definition's pattern.
+   -  `transformer?: (lexeme: string) => string` - a transformer to be applied on the matched lexeme
+-  `generate(input: string, metadataGenerator: () => Metadata): RegexEngine`
+   -  `input: string` - the input to be scanned
+   -  `metadataGenerator: () => Metadata` - a function which generates the metadata for the emitted token
+
+---
+
+### `RegexEngine<TokenType, Metadata>` class
+
+**Methods**
+
+ - `hasNextToken(): boolean` - returns true if the lexer is not at the end of the input yet
+ - `peekNextToken(): Token<TokenType, Metadata>` - returns the next token in the input, **without consuming it**
+   - this method throws an Error if the scanner failed to match any tokens
+ - `tryPeekNextToken(): TokenResult<TokenType, Metadata>` - returns the next token in the input, **without consuming it**
+ - `getNextToken(): Token<TokenType, Metadata>` - returns the next token in the input, consuming it in the process
+   - this method throws an Error if the scanner failed to match any tokens
+ - `tryGetNextToken(): TokenResult<TokenType, Metadata>` - returns the next token in the input, consuming it in the process
+
+---
+
+### `TokenResult<TokenType, Metadata` interface
+
+This interface is used to represent the result of scanning, without throwing an Error.
+
+```ts
+export type TokenResult<TokenType, Metadata> =
+  | { success: true; token: Token<TokenType, Metadata> }
+  | { success: false; reason: string; line: number; column: number };
+```
+
+## Realistic Examples
+
+You can view an example lexer for a toy programming language based on League of Legends in [examples/basic.ts](./examples/basic.ts). This example shows common usecases like keywords, specific symbols, and comment handling.

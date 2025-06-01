@@ -1,21 +1,70 @@
 import { ColumnAndRow } from "./ColumnAndRow";
-import { RegexEngineParsingResult, RegexLexer, RegexNode, RegexParser, StringTransformer } from "./internal";
+import {
+  RegexEngineParsingResult,
+  RegexIntrinsicNode,
+  RegexLexer,
+  RegexNode,
+  RegexParser,
+  StringTransformer,
+} from "./internal";
 import { Token } from "./Token";
-import { Character } from "./utils/Character";
+import { initializeCharacter } from "./utils/Character";
 
 export interface SlexOptions<TokenType> {
   EOF_TYPE: TokenType;
   isHigherPrecedence: (options: { current: TokenType; next: TokenType }) => boolean;
+  whitespaceCharacters?: string[];
+  ignoreTokens?: TokenType[];
 }
 
 export class Slex<TokenType, Metadata> {
   public environment: Map<string, RegexNode<TokenType>> = new Map();
-  isHigherPrecedence: (options: { current: TokenType; next: TokenType }) => boolean;
-  EOF_TYPE: TokenType;
+  Character = initializeCharacter({});
 
-  constructor(opts: SlexOptions<TokenType>) {
-    this.EOF_TYPE = opts.EOF_TYPE;
-    this.isHigherPrecedence = opts.isHigherPrecedence;
+  constructor(public readonly options: SlexOptions<TokenType>) {
+    this.environment = new Map();
+
+    this.environment.set(
+      "__decimal_digit",
+      new RegexIntrinsicNode<TokenType>("__decimal_digit", (restString) => {
+        return this.Character.isDigit(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
+
+    this.environment.set(
+      "__letter",
+      new RegexIntrinsicNode<TokenType>("__letter", (restString) => {
+        return this.Character.isAlphabetic(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
+
+    this.environment.set(
+      "__uppercase_letter",
+      new RegexIntrinsicNode<TokenType>("__uppercase_letter", (restString) => {
+        return this.Character.isAlphabeticUppercase(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
+
+    this.environment.set(
+      "__lowercase_letter",
+      new RegexIntrinsicNode<TokenType>("__lowercase_letter", (restString) => {
+        return this.Character.isAlphabeticLowercase(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
+
+    this.environment.set(
+      "__symbols",
+      new RegexIntrinsicNode<TokenType>("__symbolic", (restString) => {
+        return this.Character.isSymbolic(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
+
+    this.environment.set(
+      "__control_character",
+      new RegexIntrinsicNode<TokenType>("__control_character", (restString) => {
+        return this.Character.isControl(restString.charAt(0)) ? [restString.charAt(0)] : [];
+      })
+    );
   }
 
   public addRule(name: string, expression: string, emit?: TokenType, transformer?: StringTransformer) {
@@ -32,118 +81,90 @@ export class Slex<TokenType, Metadata> {
   }
 
   public generate(input: string, metadataGenerator: () => Metadata): RegexEngine<TokenType, Metadata> {
-    return new RegexEngine<TokenType, Metadata>(
-      this.environment,
-      metadataGenerator,
-      this.EOF_TYPE,
-      this.isHigherPrecedence,
-      input
-    );
+    return new RegexEngine<TokenType, Metadata>(this.options, this.environment, metadataGenerator, input);
   }
 }
 
-class RegexEngine<TokenType, Metadata> {
-  environment: Map<string, RegexNode<TokenType>> = new Map();
-  input: string;
+export type TokenResult<TokenType, Metadata> =
+  | { success: true; token: Token<TokenType, Metadata> }
+  | { success: false; reason: string; line: number; column: number };
+
+export class RegexEngine<TokenType, Metadata> {
   currentCharacterIndex: number = 0;
   startCharacterIndex: number = 0;
-
-  metadataGenerator: () => Metadata;
-  isHigherPrecedence: (options: { current: TokenType; next: TokenType }) => boolean;
-  EOF_TYPE: TokenType;
+  Character: ReturnType<typeof initializeCharacter>;
 
   public constructor(
-    environment: Map<string, RegexNode<TokenType>>,
-    metadataGenerator: () => Metadata,
-    EOF_TYPE: TokenType,
-    isHigherPrecedence: (options: { current: TokenType; next: TokenType }) => boolean,
-    input: string
+    public readonly options: SlexOptions<TokenType>,
+    public readonly environment: Map<string, RegexNode<TokenType>>,
+    public readonly metadataGenerator: () => Metadata,
+    public readonly input: string
   ) {
-    this.environment = environment;
-    this.input = input;
-    this.metadataGenerator = metadataGenerator;
-    this.EOF_TYPE = EOF_TYPE;
-    this.isHigherPrecedence = isHigherPrecedence;
+    this.Character = initializeCharacter({ whitespace: this.options.whitespaceCharacters });
   }
 
   private peek(): string {
     return this.currentCharacterIndex >= this.input.length ? "\0" : this.input.charAt(this.currentCharacterIndex);
   }
 
-  // returns the character stored in currentCharacterIndex + 1
-  private peekNext(): string {
-    return this.currentCharacterIndex + 1 >= this.input.length
-      ? "\0"
-      : this.input.charAt(this.currentCharacterIndex + 1);
-  }
-
-  // eats all the comments
-  // need to loop due to the possibility of chained comments like this one
-  private ignoreComment(): boolean {
-    if (this.currentCharacterIndex < this.input.length - 2 && this.peek() === "/") {
-      if (this.peekNext() === "/") {
-        this.currentCharacterIndex += 2;
-
-        while (this.hasNextToken() && this.peek() != "\0" && this.peek() != "\n") {
-          this.currentCharacterIndex++;
-        }
-        return true;
-      } else if (this.peekNext() === "*") {
-        this.currentCharacterIndex += 2;
-
-        while (this.peek() != "*" || this.peekNext() != "/") {
-          if (this.currentCharacterIndex >= this.input.length - 2) {
-            throw new Error("Error: Unterminated multiline comment");
-          }
-
-          this.currentCharacterIndex++;
-        }
-        this.match("*");
-        this.match("/");
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Just a boolean check for the next character
-  private match(c: string): boolean {
-    if (this.peek() != c) return false;
-    this.currentCharacterIndex++;
-    return true;
-  }
-
   // skips over every piece of whitespace
   private ignoreWhitespace() {
-    while (this.currentCharacterIndex < this.input.length + 1 && Character.isWhitespace(this.peek())) {
+    while (this.currentCharacterIndex < this.input.length + 1 && this.Character.isWhitespace(this.peek())) {
       this.currentCharacterIndex++;
     }
   }
 
   public peekNextToken() {
+    const result = this.tryPeekNextToken();
+    if (result.success === false) throw new Error(result.reason);
+    return result.token;
+  }
+
+  public tryPeekNextToken() {
     while (true) {
       const save = this.currentCharacterIndex;
-      const token = this.getNextToken();
-
+      const response = this.tryGetNextToken();
       this.currentCharacterIndex = save;
-      return token;
+      return response;
     }
   }
 
-  public getNextToken() {
-    do {
-      this.ignoreWhitespace();
-    } while (this.ignoreComment());
+  public getNextToken(): Token<TokenType, Metadata> {
+    const result = this.tryGetNextToken();
+    if (result.success === false) throw new Error(result.reason);
+    return result.token;
+  }
 
+  public tryGetNextToken(): TokenResult<TokenType, Metadata> {
+    let ret: TokenResult<TokenType, Metadata> | null = null;
+
+    do this.ignoreWhitespace();
+    while ((ret = this.tryGetNextNonSkippedToken()) === null);
+
+    return ret;
+  }
+
+  private tryGetNextNonSkippedToken() {
+    let ret: TokenResult<TokenType, Metadata> | null = null;
+
+    while ((ret = this._tryGetNextToken())) {
+      if (ret.success === false) return ret;
+      else if (this.options.ignoreTokens === undefined) return ret;
+      else if (this.options.ignoreTokens.includes(ret.token.type)) return null;
+      else break;
+    }
+
+    return ret;
+  }
+
+  private _tryGetNextToken(): TokenResult<TokenType, Metadata> {
     this.startCharacterIndex = this.currentCharacterIndex;
 
-    if (this.hasNextToken() === false)
-      return new Token(
-        this.EOF_TYPE,
-        "",
-        ColumnAndRow.calculate(this.startCharacterIndex, this.input),
-        this.metadataGenerator()
-      );
+    if (this.hasNextToken() === false) {
+      const metadata = this.metadataGenerator();
+      const position = ColumnAndRow.calculate(this.startCharacterIndex, this.input);
+      return { success: true, token: new Token(this.options.EOF_TYPE, "", position, metadata) };
+    }
 
     let ret = new RegexEngineParsingResult(false, "", null);
     let retNode: RegexNode<TokenType> | null = null;
@@ -153,7 +174,8 @@ class RegexEngine<TokenType, Metadata> {
 
       const matches: string[] = attemptNode.getMatches(
         this.input.substring(this.currentCharacterIndex),
-        this.environment
+        this.environment,
+        false
       );
 
       if (matches.length > 0) {
@@ -165,7 +187,7 @@ class RegexEngine<TokenType, Metadata> {
           ret.lexeme.length < longest.length ||
           (ret.lexeme.length === longest.length &&
             retNode != null &&
-            this.isHigherPrecedence({ current: retNode.getTokenType()!, next: attemptNode.getTokenType()! }))
+            this.options.isHigherPrecedence({ current: retNode.getTokenType()!, next: attemptNode.getTokenType()! }))
         ) {
           ret = new RegexEngineParsingResult(true, longest, ruleName);
           retNode = attemptNode;
@@ -186,24 +208,30 @@ class RegexEngine<TokenType, Metadata> {
         this.metadataGenerator()
       );
 
-      return returnedToken;
+      return { success: true, token: returnedToken };
     }
 
     const nextChar = this.input.charAt(this.startCharacterIndex);
     const position = ColumnAndRow.calculate(this.startCharacterIndex, this.input);
 
     this.currentCharacterIndex++;
-    throw new Error(
-      "Error: Unexpected character '" +
+    return {
+      success: false,
+      line: position.getActualRow(),
+      column: position.getActualColumn(),
+      reason:
+        "Unexpected character '" +
         nextChar +
         "' at Line: " +
         position.getActualRow() +
         ", Column: " +
-        position.getActualColumn()
-    );
+        position.getActualColumn(),
+    };
   }
 
   public hasNextToken(): boolean {
     return this.currentCharacterIndex < this.input.length;
   }
 }
+
+export { Token, ColumnAndRow };

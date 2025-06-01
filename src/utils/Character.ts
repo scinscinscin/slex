@@ -1,13 +1,13 @@
-export const Character = {
-  isAlphabetic(ch: string): boolean {
-    return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z");
-  },
+export const initializeCharacter = (options: { whitespace?: string[] }) => {
+  const whitespace = options.whitespace || [" ", "\t", "\n", "\r"];
 
-  isDigit(ch: string): boolean {
-    return ch >= "0" && ch <= "9";
-  },
-
-  isWhitespace(ch: string): boolean {
-    return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
-  },
+  return {
+    isDigit: (ch: string) => ch >= "0" && ch <= "9",
+    isAlphabetic: (ch: string) => /^\p{L}+$/u.test(ch),
+    isAlphabeticUppercase: (ch: string) => /^\p{Lu}+$/u.test(ch),
+    isAlphabeticLowercase: (ch: string) => /^\p{Ll}+$/u.test(ch),
+    isControl: (ch: string) => /^\p{Cc}+$/u.test(ch),
+    isSymbolic: (ch: string) => /^\p{P}+$/u.test(ch) || /^\p{S}+$/u.test(ch),
+    isWhitespace: (ch: string) => whitespace.includes(ch),
+  };
 };

@@ -36,14 +36,20 @@ enum TokenType {
     // INCREMENTATION OPERATOR
     DOUBLE_PLUS, DOUBLE_MINUS,
 
-    STRING_LITERAL, NUMBER_LITERAL, BOOLEAN_LITERAL, NULL_LITERAL
+    STRING_LITERAL, NUMBER_LITERAL, BOOLEAN_LITERAL, NULL_LITERAL,
+
+    SINGLE_LINE_COMMENT, MULTI_LINE_COMMENT
 }
 
 const lexerGenerator = new Slex<TokenType, { sourcePath: string }>({
   EOF_TYPE: TokenType.EOF,
-  isHigherPrecedence: ({ current, next }) => {
-    return current === TokenType.IDENTIFIER;
-  },
+
+  // The pattern for TokenType.IDENTIFIER matches keywords too. This line
+  // specifies that keywords have higher precedence than identifiers.
+  isHigherPrecedence: ({ current, next }) => current === TokenType.IDENTIFIER,
+
+  // Specifies that SINGLE_LINE_COMMENT and MULTI_LINE_COMMENT tokens should be ignored.
+  ignoreTokens: [TokenType.SINGLE_LINE_COMMENT, TokenType.MULTI_LINE_COMMENT],
 });
 
 // lex symbols
@@ -87,21 +93,12 @@ lexerGenerator.addRule("r_brace", "$]", TokenType.R_BRACE);
 lexerGenerator.addRule("l_curly_brace", "${", TokenType.L_CURLY_BRACE);
 lexerGenerator.addRule("r_curly_brace", "$}", TokenType.R_CURLY_BRACE);
 
-lexerGenerator.addRule("lowercase", "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z");
-lexerGenerator.addRule("uppercase", "A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z");
-lexerGenerator.addRule("letter", "${lowercase}|${uppercase}");
-lexerGenerator.addRule(
-  "symbols",
-  "$ | $! | $@ | $# | $$ | $% | $^ | $& | $* | $( | $) | ${ | $[ | $} | $] | $; | $: | $< | $, | $. | $> | $? | $/ | $` | $~ | $- | $_ | $+ | $= | $|"
-);
-lexerGenerator.addRule("escape_character", "$\\ | $\n | $\t | $\r | $\\$\" | $\\$'");
-lexerGenerator.addRule("digit", "0|1|2|3|4|5|6|7|8|9");
-lexerGenerator.addRule("character", "${letter}|${digit}|${symbols}|${escape_character}");
+lexerGenerator.addRule("character", "${__letter}|${__decimal_digit}|${__symbols}|${__control_character}");
 
-lexerGenerator.addRule("float_number", "(${digit})+$.(${digit})+");
-lexerGenerator.addRule("decimal_number", "(${digit})+");
+lexerGenerator.addRule("float_number", "(${__decimal_digit})+$.(${di__decimal_digitgit})+");
+lexerGenerator.addRule("decimal_number", "(${__decimal_digit})+");
 lexerGenerator.addRule("octal_number", "0e(0|1|2|3|4|5|6|7)+");
-lexerGenerator.addRule("hexadecimal_number", "0x(${digit}|a|b|c|d|e|f|A|B|C|D|E|F)+");
+lexerGenerator.addRule("hexadecimal_number", "0x(${__decimal_digit}|a|b|c|d|e|f|A|B|C|D|E|F)+");
 lexerGenerator.addRule("binary_number", "0b(0|1)+");
 
 // handle literal tokens
@@ -148,13 +145,20 @@ lexerGenerator.addRule("number_type", "stats", TokenType.NUMBER_TYPE);
 lexerGenerator.addRule("boolean_type", "goat", TokenType.BOOLEAN_TYPE);
 lexerGenerator.addRule("string_type", "message", TokenType.STRING_TYPE);
 lexerGenerator.addRule("void_type", "passive", TokenType.VOID_TYPE);
-lexerGenerator.addRule("identifier", "(${letter}|$_)(${letter}|${digit}|$_)*", TokenType.IDENTIFIER);
+lexerGenerator.addRule("identifier", "(${__letter}|$_)(${__letter}|${__decimal_digit}|$_)*", TokenType.IDENTIFIER);
+
+// handle single and multi line comments
+lexerGenerator.addRule("single_line_comment", "$/$/(($\n)!)*", TokenType.SINGLE_LINE_COMMENT);
+lexerGenerator.addRule("multi_line_comment", "$/$*(($*)!|($*($/)!))*$*$/", TokenType.MULTI_LINE_COMMENT);
 
 const stacktrace_example = `item factorial: skill (stats) -> stats = 
   skill (item n: stats): stats -> {
     canwin(n >= 2) recast n * factorial(n - 1);
     
     // only print the stack in the base case
+    /**
+     * This is an example multiline comment
+     */
     dump_call_stack();
     recast 1;
   };

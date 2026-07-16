@@ -18,6 +18,7 @@ export class RegexEngineParsingResult {
 }
 
 export type StringTransformer = (input: string) => string;
+export type RegexNodeModifiers = { negated: boolean; caseInsensitive: boolean };
 
 export abstract class RegexNode<TokenType> {
   private emit: TokenType | null = null;
@@ -44,7 +45,7 @@ export abstract class RegexNode<TokenType> {
   public abstract getMatches(
     restString: string,
     environment: Map<string, RegexNode<TokenType>>,
-    negated: boolean
+    modifiers: RegexNodeModifiers
   ): string[];
 }
 
@@ -61,15 +62,19 @@ class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
     return ret;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
     let caches: string[] = [""];
 
     for (const node of this.nodes) {
       let nextCaches: string[] = [];
 
       for (const cache of caches) {
-        const rest = restString.replace(cache, "");
-        const nextMatches = node.getMatches(rest, environment, negated);
+        const rest = restString.slice(cache.length);
+        const nextMatches = node.getMatches(rest, environment, modifiers);
         nextCaches.push(...nextMatches.map((m) => cache + m));
       }
 
@@ -97,9 +102,13 @@ class RegexEitherNode<TokenType> extends RegexNode<TokenType> {
     return ret;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
     let matches: string[] = [];
-    for (const node of this.nodes) matches.push(...node.getMatches(restString, environment, negated));
+    for (const node of this.nodes) matches.push(...node.getMatches(restString, environment, modifiers));
     return matches;
   }
 }
@@ -113,13 +122,22 @@ class RegexLiteralNode<TokenType> extends RegexNode<TokenType> {
     return "" + this.ch;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+  // TODO: modify this code to handle case insensitive literals and whatnot
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
+    const getStr = (str: string) => (modifiers.caseInsensitive ? str.toLowerCase() : str);
+
     if (restString.length === 0) return [];
 
     const matches: string[] = [];
-    const starting = restString.charAt(0);
-    if (negated === false && starting === this.ch) matches.push("" + starting);
-    else if (negated === true && starting !== this.ch) matches.push("" + starting);
+    const ch = restString.charAt(0);
+
+    if (modifiers.negated === false && getStr(ch) === getStr(this.ch)) matches.push(ch);
+    else if (modifiers.negated === true && getStr(ch) !== getStr(this.ch)) matches.push(ch);
+
     return matches;
   }
 }
@@ -127,7 +145,7 @@ class RegexLiteralNode<TokenType> extends RegexNode<TokenType> {
 export class RegexIntrinsicNode<TokenType> extends RegexNode<TokenType> {
   public constructor(
     public readonly intrinsicName: string,
-    public readonly calculator: (restString: string, environment: Map<string, RegexNode<TokenType>>) => string[]
+    public readonly calculator: (ch: string, negated: boolean) => boolean
   ) {
     super();
   }
@@ -136,8 +154,22 @@ export class RegexIntrinsicNode<TokenType> extends RegexNode<TokenType> {
     return "<" + this.intrinsicName + ">";
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>): string[] {
-    return this.calculator(restString, environment);
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
+    const matches: string[] = [];
+
+    let ch = restString.charAt(0);
+    if (modifiers.caseInsensitive) ch = ch.toLowerCase();
+
+    const result = this.calculator(ch, modifiers.negated);
+
+    if (modifiers.negated === false && result) matches.push(ch);
+    else if (modifiers.negated === true && !result) matches.push(ch);
+
+    return matches;
   }
 }
 
@@ -153,11 +185,15 @@ class RegexVariableNode<TokenType> extends RegexNode<TokenType> {
     return "<" + this.variableName + ">";
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
     if (!environment.has(this.variableName)) return [];
 
     const rootNode = environment.get(this.variableName);
-    return rootNode!.getMatches(restString, environment, negated);
+    return rootNode!.getMatches(restString, environment, modifiers);
   }
 }
 
@@ -166,6 +202,7 @@ enum RegexGroupingNodeModifiers {
   NONE_OR_MORE,
   ONE_OR_MORE,
   NEGATION,
+  CASE_INSENSITIVE,
 }
 
 class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
@@ -189,13 +226,19 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
       (this.modifier === RegexGroupingNodeModifiers.ONE_OR_MORE
         ? "+"
         : this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE
-        ? "*"
-        : "")
+          ? "*"
+          : this.modifier === RegexGroupingNodeModifiers.CASE_INSENSITIVE
+            ? "^"
+            : "")
     );
   }
 
-  public _getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
-    const initialMatches: string[] = this.internalNode.getMatches(restString, environment, negated);
+  public _getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
+    const initialMatches: string[] = this.internalNode.getMatches(restString, environment, modifiers);
 
     if (initialMatches.length === 0) {
       if (this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE) initialMatches.push("");
@@ -209,10 +252,10 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
       const nextMatches: string[] = [];
 
       for (const match of matches) {
-        const rest: string = restString.replace(match, "");
+        const rest: string = restString.slice(match.length);
         if (rest.length === 0) continue;
 
-        const nextMatch = this.internalNode.getMatches(rest, environment, negated);
+        const nextMatch = this.internalNode.getMatches(rest, environment, modifiers);
         nextMatches.push(...nextMatch.map((m) => match + m));
       }
 
@@ -224,10 +267,18 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
     return matches;
   }
 
-  public getMatches(restString: string, environment: Map<string, RegexNode<TokenType>>, negated: boolean): string[] {
+  public getMatches(
+    restString: string,
+    environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
     if (this.modifier === RegexGroupingNodeModifiers.NEGATION)
-      return this.internalNode.getMatches(restString, environment, true);
-    return this._getMatches(restString, environment, negated);
+      return this.internalNode.getMatches(restString, environment, { ...modifiers, negated: true });
+
+    if (this.modifier === RegexGroupingNodeModifiers.CASE_INSENSITIVE)
+      return this.internalNode.getMatches(restString, environment, { ...modifiers, caseInsensitive: true });
+
+    return this._getMatches(restString, environment, modifiers);
   }
 }
 
@@ -284,15 +335,19 @@ export class RegexParser<TokenType> {
 
         this.expect(RegexTokenType.RPAREN); // next token should be R_PAREN
 
+        const nextTokenType = this.tokens[this.currentTokenIndex]?.type;
         let modifier = RegexGroupingNodeModifiers.NONE;
-        if (this.tokens[this.currentTokenIndex].type === RegexTokenType.ASTERISK) {
+        if (nextTokenType === RegexTokenType.ASTERISK) {
           modifier = RegexGroupingNodeModifiers.NONE_OR_MORE;
           this.currentTokenIndex++;
-        } else if (this.tokens[this.currentTokenIndex].type === RegexTokenType.PLUS) {
+        } else if (nextTokenType === RegexTokenType.PLUS) {
           modifier = RegexGroupingNodeModifiers.ONE_OR_MORE;
           this.currentTokenIndex++;
-        } else if (this.tokens[this.currentTokenIndex].type === RegexTokenType.EXCLAMATION) {
+        } else if (nextTokenType === RegexTokenType.EXCLAMATION) {
           modifier = RegexGroupingNodeModifiers.NEGATION;
+          this.currentTokenIndex++;
+        } else if (nextTokenType === RegexTokenType.CARAT) {
+          modifier = RegexGroupingNodeModifiers.CASE_INSENSITIVE;
           this.currentTokenIndex++;
         }
 
@@ -332,6 +387,7 @@ enum RegexTokenType {
   ASTERISK,
   EXCLAMATION,
   PLUS,
+  CARAT,
   VARIABLE,
   LPAREN,
   RPAREN,
@@ -385,6 +441,9 @@ export class RegexLexer {
         this.index++;
       } else if (currentCharacter === ")") {
         this.tokens.push(new RegexToken(RegexTokenType.RPAREN, currentCharacter));
+        this.index++;
+      } else if (currentCharacter === "^") {
+        this.tokens.push(new RegexToken(RegexTokenType.CARAT, currentCharacter));
         this.index++;
       } else if (currentCharacter === "$") {
         if (

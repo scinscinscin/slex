@@ -75,16 +75,17 @@ Token: NUMBER. Lexeme: 456.789. Column: 16. Line: 1
 
 ### Regular Expression Syntax
 
-|   Construct   |                                                    Action                                                    |   Example    |
-| :-----------: | :----------------------------------------------------------------------------------------------------------: | :----------: |
-| Concatenation |                           Represents the concatenation of multiple rules together.                           |    $R1R2$    |
-|    Either     |                              Represents possibilities between different rules.                               |  $R1 \| R2$  |
-|  Kleene-star  | Groups multiple rules together and dictates that they may appear zero or multiple times in the input string. |   $(R1)*$    |
-|  Kleene-plus  |     Groups multiple rules together and dictate that they must appear at least once in the input string.      |   $(R1)+$    |
-|   Negation    |  Groups multiple rules together and negates them. This is only meaningful with groups of single characters.  |   $(R1)!$    |
-|   Grouping    |                     Groups multiple rules together so they are treated as a single rule.                     |    $(R1)$    |
-|    Literal    |                                    Represents a single character literal.                                    |     $a$      |
-|   Variable    |                                    Represents another regular definition.                                    | $\$\{name\}$ |
+|     Construct      |                                                    Action                                                    |   Example    |
+| :----------------: | :----------------------------------------------------------------------------------------------------------: | :----------: |
+|   Concatenation    |                           Represents the concatenation of multiple rules together.                           |    $R1R2$    |
+|       Either       |                              Represents possibilities between different rules.                               |  $R1 \| R2$  |
+|    Kleene-star     | Groups multiple rules together and dictates that they may appear zero or multiple times in the input string. |   $(R1)*$    |
+|    Kleene-plus     |     Groups multiple rules together and dictate that they must appear at least once in the input string.      |   $(R1)+$    |
+|      Negation      |  Groups multiple rules together and negates them. This is only meaningful with groups of single characters.  |   $(R1)!$    |
+| Case insensitivity |                       Groups multiple rules together and makes them case insensitive.                        |   $(R1)$^    |
+|      Grouping      |                     Groups multiple rules together so they are treated as a single rule.                     |    $(R1)$    |
+|      Literal       |                                    Represents a single character literal.                                    |     $a$      |
+|      Variable      |                                    Represents another regular definition.                                    | $\$\{name\}$ |
 
 For literals, non-alphanumeric characters must be escaped using the $ symbol. Example: to represent the tab character as a character literal, it must be encoded in the regular expression as "$\t"
 
@@ -152,4 +153,4 @@ export type TokenResult<TokenType, Metadata> =
 
 ## Realistic Examples
 
-You can view an example lexer for a toy programming language based on League of Legends in [examples/basic.ts](./examples/basic.ts). This example shows common usecases like keywords, specific symbols, and comment handling.
+You can view an example lexer for a toy programming language based on League of Legends in [examples/basic.ts](./examples/basic.ts). This example shows common usecases like keywords, specific symbols, and comment handling. For examples of case insensitive matching, see [examples/sql.ts](./examples/sql.ts).

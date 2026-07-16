@@ -26,44 +26,26 @@ export class Slex<TokenType, Metadata> {
 
     this.environment.set(
       "__decimal_digit",
-      new RegexIntrinsicNode<TokenType>("__decimal_digit", (restString) => {
-        return this.Character.isDigit(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
+      new RegexIntrinsicNode<TokenType>("__decimal_digit", this.Character.isDigit)
     );
 
-    this.environment.set(
-      "__letter",
-      new RegexIntrinsicNode<TokenType>("__letter", (restString) => {
-        return this.Character.isAlphabetic(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
-    );
+    this.environment.set("__letter", new RegexIntrinsicNode<TokenType>("__letter", this.Character.isAlphabetic));
 
     this.environment.set(
       "__uppercase_letter",
-      new RegexIntrinsicNode<TokenType>("__uppercase_letter", (restString) => {
-        return this.Character.isAlphabeticUppercase(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
+      new RegexIntrinsicNode<TokenType>("__uppercase_letter", this.Character.isAlphabeticUppercase)
     );
 
     this.environment.set(
       "__lowercase_letter",
-      new RegexIntrinsicNode<TokenType>("__lowercase_letter", (restString) => {
-        return this.Character.isAlphabeticLowercase(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
+      new RegexIntrinsicNode<TokenType>("__lowercase_letter", this.Character.isAlphabeticLowercase)
     );
 
-    this.environment.set(
-      "__symbols",
-      new RegexIntrinsicNode<TokenType>("__symbolic", (restString) => {
-        return this.Character.isSymbolic(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
-    );
+    this.environment.set("__symbols", new RegexIntrinsicNode<TokenType>("__symbolic", this.Character.isSymbolic));
 
     this.environment.set(
       "__control_character",
-      new RegexIntrinsicNode<TokenType>("__control_character", (restString) => {
-        return this.Character.isControl(restString.charAt(0)) ? [restString.charAt(0)] : [];
-      })
+      new RegexIntrinsicNode<TokenType>("__control_character", this.Character.isControl)
     );
   }
 
@@ -77,6 +59,7 @@ export class Slex<TokenType, Metadata> {
 
     if (emit !== undefined) root.setTokenType(emit);
     if (transformer !== undefined) root.setTransformer(transformer);
+
     this.environment.set(name, root);
   }
 
@@ -123,8 +106,13 @@ export class RegexEngine<TokenType, Metadata> {
   public tryPeekNextToken() {
     while (true) {
       const save = this.currentCharacterIndex;
+      const save2 = this.hasReturnedEOFToken;
+
       const response = this.tryGetNextToken();
+
       this.currentCharacterIndex = save;
+      this.hasReturnedEOFToken = save2;
+
       return response;
     }
   }
@@ -160,9 +148,11 @@ export class RegexEngine<TokenType, Metadata> {
   private _tryGetNextToken(): TokenResult<TokenType, Metadata> {
     this.startCharacterIndex = this.currentCharacterIndex;
 
-    if (this.hasNextToken() === false) {
+    if (this.currentCharacterIndex >= this.input.length) {
       const metadata = this.metadataGenerator();
       const position = ColumnAndRow.calculate(this.startCharacterIndex, this.input);
+
+      this.hasReturnedEOFToken = true;
       return { success: true, token: new Token(this.options.EOF_TYPE, "", position, metadata) };
     }
 
@@ -175,7 +165,7 @@ export class RegexEngine<TokenType, Metadata> {
       const matches: string[] = attemptNode.getMatches(
         this.input.substring(this.currentCharacterIndex),
         this.environment,
-        false
+        { caseInsensitive: false, negated: false }
       );
 
       if (matches.length > 0) {
@@ -229,8 +219,9 @@ export class RegexEngine<TokenType, Metadata> {
     };
   }
 
+  private hasReturnedEOFToken = false;
   public hasNextToken(): boolean {
-    return this.currentCharacterIndex < this.input.length;
+    return this.hasReturnedEOFToken == false;
   }
 }
 

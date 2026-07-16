@@ -1,11 +1,11 @@
 {
   "name": "@scinorandex/slex",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "No fuss lexer generator",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w"
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json -w"
   },
   "repository": {
     "type": "git",

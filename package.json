@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "watch": "tsc -p tsconfig.build.json -w",
+    "tc": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run"
   },
   "repository": {

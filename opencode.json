@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": ["llama"],
+  "provider": {
+    "llama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp",
+      "options": { "baseURL": "http://192.168.0.78:8080/v1" },
+      "models": {
+        "your-model-id": {
+          "id": "unsloth/Qwen3.8-27B-GGUF:UD-IQ4_XS",
+          "name": "unsloth/Qwen3.8-27B-GGUF:UD-IQ4_XS",
+          "limit": { "context": 81920, "output": 8192 }
+        }
+      }
+    }
+  }
+}

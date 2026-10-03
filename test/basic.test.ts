@@ -1,11 +1,11 @@
+import { describe, expect, it } from "vitest";
 import { Slex } from "../src/index";
 
 // prettier-ignore
 enum TokenType {
     EOF,
 
-    IMPORT,
-    VARIABLE, CONSTANT,
+    IMPORT, VARIABLE, CONSTANT,
     FUNCTION, OBJECT,
 
     RETURN,
@@ -151,7 +151,19 @@ lexerGenerator.addRule("identifier", "(${__letter}|$_)(${__letter}|${__decimal_d
 lexerGenerator.addRule("single_line_comment", "$/$/(($\n)!)*", TokenType.SINGLE_LINE_COMMENT);
 lexerGenerator.addRule("multi_line_comment", "$/$*(($*)!|($*($/)!))*$*$/", TokenType.MULTI_LINE_COMMENT);
 
-const stacktrace_example = `item factorial: skill (stats) -> stats = 
+function lex(input: string): string[] {
+  const lexer = lexerGenerator.generate(input, () => ({ sourcePath: "test" }));
+  const names: string[] = [];
+  while (lexer.hasNextToken()) {
+    const token = lexer.getNextToken();
+    names.push(TokenType[token.type] ?? String(token.type));
+  }
+  return names;
+}
+
+describe("basic example lexer", () => {
+  it("lexes the stacktrace example from examples/basic.ts", () => {
+    const stacktrace_example = `item factorial: skill (stats) -> stats = 
   skill (item n: stats): stats -> {
     canwin(n >= 2) recast n * factorial(n - 1);
     
@@ -165,19 +177,78 @@ const stacktrace_example = `item factorial: skill (stats) -> stats =
 
 broadcast(factorial(5));
 `;
+    expect(lex(stacktrace_example)).toEqual([
+      "VARIABLE", "IDENTIFIER", "COLON", "FUNCTION", "L_PAREN", "NUMBER_TYPE", "R_PAREN",
+      "MINUS_R_ANGLE_BAR", "NUMBER_TYPE", "EQUALS",
+      "FUNCTION", "L_PAREN", "VARIABLE", "IDENTIFIER", "COLON", "NUMBER_TYPE", "R_PAREN",
+      "COLON", "NUMBER_TYPE", "MINUS_R_ANGLE_BAR", "L_CURLY_BRACE",
+      "IF", "L_PAREN", "IDENTIFIER", "R_ANGLE_BAR_EQUALS", "NUMBER_LITERAL", "R_PAREN",
+      "RETURN", "IDENTIFIER", "STAR", "IDENTIFIER", "L_PAREN", "IDENTIFIER", "MINUS", "NUMBER_LITERAL", "R_PAREN", "SEMICOLON",
+      "IDENTIFIER", "L_PAREN", "R_PAREN", "SEMICOLON",
+      "RETURN", "NUMBER_LITERAL", "SEMICOLON",
+      "R_CURLY_BRACE", "SEMICOLON",
+      "IDENTIFIER", "L_PAREN", "IDENTIFIER", "L_PAREN", "NUMBER_LITERAL", "R_PAREN", "R_PAREN", "SEMICOLON",
+      "EOF",
+    ]);
+  });
 
-const lexer = lexerGenerator.generate(stacktrace_example, () => ({ sourcePath: "stacktrace.example" }));
+  it("lexes all single and multi character operators", () => {
+    expect(
+      lex(`+ - * / % ** ++ -- << >> | & ^ < <= > >= != == && || ! -> = , . : ; ( ) [ ] { }`)
+    ).toEqual([
+      "PLUS", "MINUS", "STAR", "FORWARD_SLASH", "PERCENT", "DOUBLE_STAR", "DOUBLE_PLUS", "DOUBLE_MINUS",
+      "DOUBLE_R_ANGLE_BAR", "DOUBLE_L_ANGLE_BAR", "PIPE", "AMPERSAND", "CARAT",
+      "L_ANGLE_BAR", "L_ANGLE_BAR_EQUALS", "R_ANGLE_BAR", "R_ANGLE_BAR_EQUALS",
+      "EXCLAMATION_EQUALS", "DOUBLE_EQUALS", "DOUBLE_AMPERSAND", "DOUBLE_PIPE", "EXCLAMATION",
+      "MINUS_R_ANGLE_BAR", "EQUALS", "COMMA", "DOT", "COLON", "SEMICOLON",
+      "L_PAREN", "R_PAREN", "L_BRACE", "R_BRACE", "L_CURLY_BRACE", "R_CURLY_BRACE",
+      "EOF",
+    ]);
+  });
 
-while (lexer.hasNextToken()) {
-  const token = lexer.getNextToken();
-  console.log(
-    "Token: " +
-      TokenType[token.type] +
-      ". Lexeme: " +
-      token.lexeme +
-      ". Column: " +
-      token.column +
-      ". Line: " +
-      token.line
-  );
-}
+  it("lexes decimal, float, hex, binary and octal numbers", () => {
+    expect(lex(`123 1.5 0x1F 0b101 0e7`)).toEqual([
+      "NUMBER_LITERAL", "NUMBER_LITERAL", "NUMBER_LITERAL", "NUMBER_LITERAL", "NUMBER_LITERAL", "EOF",
+    ]);
+  });
+
+  it("lexes reserved keywords with higher precedence than identifiers", () => {
+    expect(
+      lex(`item rune skill steal build canwin remake lose channel teleport recall flash cancel wave cannon clear next of support carry feed recast`)
+    ).toEqual([
+      "VARIABLE", "CONSTANT", "FUNCTION", "IMPORT", "OBJECT", "IF", "ELIF", "ELSE",
+      "SWITCH", "CASE", "DEFAULT", "SWITCH_GOTO", "SWITCH_BREAK", "WHILE", "FOR",
+      "LOOP_BREAK", "LOOP_CONTINUE", "OF", "TRY", "CATCH", "THROW", "RETURN", "EOF",
+    ]);
+  });
+
+  it("lexes type keywords and plain identifiers", () => {
+    expect(lex(`stats goat message passive foo _a1 a_b_c 9lives`)).toEqual([
+      "NUMBER_TYPE", "BOOLEAN_TYPE", "STRING_TYPE", "VOID_TYPE",
+      "IDENTIFIER", "IDENTIFIER", "IDENTIFIER",
+      "NUMBER_LITERAL", "IDENTIFIER",
+      "EOF",
+    ]);
+  });
+
+  it("lexes boolean and null literals", () => {
+    expect(lex(`faker shaker cooldown`)).toEqual([
+      "BOOLEAN_LITERAL", "BOOLEAN_LITERAL", "NULL_LITERAL", "EOF",
+    ]);
+  });
+
+  it("ignores single line and multi line comments", () => {
+    expect(
+      lex(`// line comment
+x
+/* multi
+line */y`)
+    ).toEqual(["IDENTIFIER", "IDENTIFIER", "EOF"]);
+  });
+
+  it("always terminates with an EOF token", () => {
+    for (const input of [`1`, `foo`, `+ - *`, `item n: stats`]) {
+      expect(lex(input).at(-1)).toBe("EOF");
+    }
+  });
+});

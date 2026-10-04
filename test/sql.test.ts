@@ -50,8 +50,8 @@ lexerGenerator.addRule("l_paren", "$(", TokenType.L_PAREN);
 lexerGenerator.addRule("r_paren", "$)", TokenType.R_PAREN);
 lexerGenerator.addRule("l_bracket", "$[", TokenType.L_BRACKET);
 lexerGenerator.addRule("r_bracket", "$]", TokenType.R_BRACKET);
-lexerGenerator.addRule("l_brace", "${", TokenType.L_BRACE);
-lexerGenerator.addRule("r_brace", "$}", TokenType.R_BRACE);
+lexerGenerator.addRule("l_brace", "\\{", TokenType.L_BRACE);
+lexerGenerator.addRule("r_brace", "\\}", TokenType.R_BRACE);
 lexerGenerator.addRule("comma", "$,", TokenType.COMMA);
 lexerGenerator.addRule("semicolon", "$;", TokenType.SEMICOLON);
 lexerGenerator.addRule("dot", "$.", TokenType.DOT);
@@ -62,7 +62,7 @@ lexerGenerator.addRule("uppercase", "A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V
 lexerGenerator.addRule("letter", "${lowercase}|${uppercase}");
 lexerGenerator.addRule(
   "symbols",
-  "$ | $! | $@ | $# | $$ | $% | $^ | $& | $* | $( | $) | ${ | $[ | $} | $] | $; | $: | $< | $, | $. | $> | $? | $/ | $` | $~ | $- | $_ | $+ | $= | $|"
+  "$ | $! | $@ | $# | $$ | $% | $^ | $& | $* | $( | $) | \\{ | $[ | $} | $] | $; | $: | $< | $, | $. | $> | $? | $/ | $` | $~ | $- | $_ | $+ | $= | $|"
 );
 lexerGenerator.addRule("escape_character", "$\\ | $\n | $\t | $\r | $\\$\" | $\\$'");
 lexerGenerator.addRule("digit", "0|1|2|3|4|5|6|7|8|9");
@@ -108,20 +108,39 @@ function lex(input: string): string[] {
 
 describe("sql example lexer", () => {
   it("lexes the query from examples/sql.ts", () => {
-    expect(lex(`SELECT * from users;`)).toEqual([
-      "SELECT", "STAR", "FROM", "IDENTIFIER", "SEMICOLON", "EOF",
-    ]);
+    expect(lex(`SELECT * from users;`)).toEqual(["SELECT", "STAR", "FROM", "IDENTIFIER", "SEMICOLON", "EOF"]);
   });
 
   it("lexes all operators and punctuation", () => {
-    expect(
-      lex(`+ - * / % ~ | & ^ << >> || = <> < > <= >= ( ) [ ] { } , ; . :`)
-    ).toEqual([
-      "PLUS", "MINUS", "STAR", "SLASH", "PERCENT", "TILDE",
-      "PIPE", "AMPERSAND", "CARET", "L_SHIFT", "R_SHIFT", "DOUBLE_PIPE",
-      "EQUALS", "NOT_EQUALS", "LESS_THAN", "GREATER_THAN", "LESS_THAN_OR_EQUALS", "GREATER_THAN_OR_EQUALS",
-      "L_PAREN", "R_PAREN", "L_BRACKET", "R_BRACKET", "L_BRACE", "R_BRACE",
-      "COMMA", "SEMICOLON", "DOT", "COLON",
+    expect(lex(`+ - * / % ~ | & ^ << >> || = <> < > <= >= ( ) [ ] { } , ; . :`)).toEqual([
+      "PLUS",
+      "MINUS",
+      "STAR",
+      "SLASH",
+      "PERCENT",
+      "TILDE",
+      "PIPE",
+      "AMPERSAND",
+      "CARET",
+      "L_SHIFT",
+      "R_SHIFT",
+      "DOUBLE_PIPE",
+      "EQUALS",
+      "NOT_EQUALS",
+      "LESS_THAN",
+      "GREATER_THAN",
+      "LESS_THAN_OR_EQUALS",
+      "GREATER_THAN_OR_EQUALS",
+      "L_PAREN",
+      "R_PAREN",
+      "L_BRACKET",
+      "R_BRACKET",
+      "L_BRACE",
+      "R_BRACE",
+      "COMMA",
+      "SEMICOLON",
+      "DOT",
+      "COLON",
       "EOF",
     ]);
   });
@@ -131,18 +150,33 @@ describe("sql example lexer", () => {
   });
 
   it("lexes reserved keywords with higher precedence than identifiers", () => {
-    expect(
-      lex(`select from where as and or not is like between exists true false null unknown`)
-    ).toEqual([
-      "SELECT", "FROM", "WHERE", "AS", "AND", "OR", "NOT", "IS", "LIKE", "BETWEEN", "EXISTS",
-      "TRUE", "FALSE", "NULL", "UNKNOWN",
+    expect(lex(`select from where as and or not is like between exists true false null unknown`)).toEqual([
+      "SELECT",
+      "FROM",
+      "WHERE",
+      "AS",
+      "AND",
+      "OR",
+      "NOT",
+      "IS",
+      "LIKE",
+      "BETWEEN",
+      "EXISTS",
+      "TRUE",
+      "FALSE",
+      "NULL",
+      "UNKNOWN",
       "EOF",
     ]);
   });
 
   it("lexes identifiers including keywords as a substring", () => {
     expect(lex(`my_col user123 _x notkeyword`)).toEqual([
-      "IDENTIFIER", "IDENTIFIER", "IDENTIFIER", "IDENTIFIER", "EOF",
+      "IDENTIFIER",
+      "IDENTIFIER",
+      "IDENTIFIER",
+      "IDENTIFIER",
+      "EOF",
     ]);
   });
 

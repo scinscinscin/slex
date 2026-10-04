@@ -1,4 +1,5 @@
-import { Slex, TokenResult } from "../../src/index";
+import { describe, expect, it } from "vitest";
+import { Slex, SlexOptions, TokenResult } from "../../src/index";
 
 export enum TokenType {
   MATCH,
@@ -7,10 +8,11 @@ export enum TokenType {
 
 export type RuleSpec = [name: string, expr: string, emit?: boolean];
 
-export function makeEngine(rules: RuleSpec[]) {
+export function makeEngine(rules: RuleSpec[], options: Partial<SlexOptions<TokenType>> = {}): Slex<TokenType, {}> {
   const generator = new Slex<TokenType, {}>({
     EOF_TYPE: TokenType.EOF,
     isHigherPrecedence: () => false,
+    ...options,
   });
 
   for (const [name, expr, emit] of rules) {
@@ -45,4 +47,12 @@ export function tryFirstToken(rules: RuleSpec[], input: string): TokenResult<Tok
   return makeEngine(rules)
     .generate(input, () => ({}))
     .tryGetNextToken();
+}
+
+/** Every lexeme the rule set produces, for tests that care about the text. */
+export function lexemes(rules: RuleSpec[], input: string, options: Partial<SlexOptions<TokenType>> = {}): string[] {
+  const lexer = makeEngine(rules, options).generate(input, () => ({}));
+  const result: string[] = [];
+  while (lexer.hasNextToken()) result.push(lexer.getNextToken().lexeme);
+  return result;
 }

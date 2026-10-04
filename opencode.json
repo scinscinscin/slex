@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "enabled_providers": ["llama"],
+  "enabled_providers": ["llama", "openrouter"],
   "provider": {
     "llama": {
       "npm": "@ai-sdk/openai-compatible",

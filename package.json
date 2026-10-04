@@ -1,13 +1,34 @@
 {
   "name": "@scinorandex/slex",
-  "version": "0.0.4",
+  "version": "0.1.1",
   "description": "No fuss lexer generator",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "watch": "tsc -p tsconfig.build.json -w",
     "tc": "tsc -p tsconfig.build.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "bench": "tsx bench/lex.bench.ts"
   },
   "repository": {
     "type": "git",
@@ -16,13 +37,18 @@
   "keywords": [
     "lexer",
     "lexer-generator",
+    "tokenizer",
+    "scanner",
     "programming-languages"
   ],
   "author": "scinorandex",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@vitest/coverage-v8": "^5",
+    "prettier": "^3",
     "tsx": "^4.23.15",
+    "typescript": "^5",
     "vite": "^8.3.2",
     "vitest": "^5.0.3"
   },

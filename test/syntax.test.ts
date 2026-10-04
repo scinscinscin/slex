@@ -57,7 +57,11 @@ describe("regex syntax: negation", () => {
 
 describe("regex syntax: case insensitivity", () => {
   it("matches the group regardless of case", () => {
-    expect(lex([["ci", "(((s)|e)^)*"]], `SE se Se sE`)).toEqual(["MATCH", "MATCH", "MATCH", "MATCH", "EOF"]);
+    expect(lex([["ci", "((s|e)^)+"]], `SE se Se sE`)).toEqual(["MATCH", "MATCH", "MATCH", "MATCH", "EOF"]);
+  });
+
+  it("does not break character classes that are case sensitive", () => {
+    expect(lex([["upper", "([A-Z])+"]], `ABC AB`)).toEqual(["MATCH", "MATCH", "EOF"]);
   });
 });
 

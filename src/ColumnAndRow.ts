@@ -1,3 +1,5 @@
+import { LineMap } from "./Position";
+
 export class ColumnAndRow {
   public readonly column: number;
   public readonly row: number;
@@ -7,21 +9,28 @@ export class ColumnAndRow {
     this.row = row;
   }
 
-  public getActualRow() {
+  public getActualRow(): number {
     return this.row + 1;
   }
 
-  public getActualColumn() {
+  public getActualColumn(): number {
     return this.column;
   }
 
+  /**
+   * Resolves `index` inside `source`. Out of range indexes are clamped instead
+   * of throwing, and `\r\n` counts as a single line break.
+   *
+   * Prefer reusing a {@link LineMap} when resolving many indexes of the same
+   * source, which is what the engine does.
+   */
   public static calculate(index: number, source: string): ColumnAndRow {
-    const lines = source.split("\n", -1);
-    let currentLine = 0;
-    let column = index;
+    return ColumnAndRow.fromIndex(index, new LineMap(source));
+  }
 
-    for (; column > lines[currentLine].length; column -= lines[currentLine++].length + 1);
-
-    return new ColumnAndRow(currentLine, column);
+  /** Same as {@link ColumnAndRow.calculate}, reusing a precomputed line map. */
+  public static fromIndex(index: number, lineMap: LineMap): ColumnAndRow {
+    const { line, column } = lineMap.positionAt(index);
+    return new ColumnAndRow(line - 1, column);
   }
 }

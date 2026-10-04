@@ -67,6 +67,10 @@ lexerGenerator.addRule("double_r_angle_bar", "$<$<", TokenType.DOUBLE_R_ANGLE_BA
 lexerGenerator.addRule("pipe", "$|", TokenType.PIPE);
 lexerGenerator.addRule("ampersand", "$&", TokenType.AMPERSAND);
 lexerGenerator.addRule("carat", "$^", TokenType.CARAT);
+lexerGenerator.addRule(
+  "symbols",
+  "$ | $! | $@ | $# | $$ | $% | $^ | $& | $* | $( | $) | ${ | $[ | $} | $] | $; | $: | $< | $, | $. | $> | $? | $/ | $` | $~ | $- | $_ | $+ | $= | $|"
+);
 
 lexerGenerator.addRule("l_angle_bar", "$<", TokenType.L_ANGLE_BAR);
 lexerGenerator.addRule("l_angle_bar_equals", "$<$=", TokenType.L_ANGLE_BAR_EQUALS);

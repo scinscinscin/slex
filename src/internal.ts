@@ -1066,6 +1066,16 @@ export class RegexLexer {
     throw new RegexSyntaxError(message, this.expression, index, this.ruleName);
   }
 
+  private isNextPipeOrEof(start: number): boolean {
+    for (let i = start + 1; i < this.expression.length; i++) {
+      const ch = this.expression.charAt(i);
+      if (ch === "|") return true;
+      if (ch === "}") return false;
+    }
+
+    return false;
+  }
+
   /** `$x` matches `x` literally, `$` at the end of the expression matches `{`. */
   private readDollarEscape(): void {
     const start = this.index;
@@ -1075,7 +1085,8 @@ export class RegexLexer {
 
     if (next === "{") {
       // "${" on its own is the historical way to match a literal "{".
-      if (this.expression.length === start + 2) {
+
+      if (this.expression.length === start + 2 || this.isNextPipeOrEof(start)) {
         this.push(RegexTokenType.LITERAL, "{", start);
         this.index = start + 2;
         return;

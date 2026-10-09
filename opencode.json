@@ -7,10 +7,15 @@
       "name": "llama.cpp",
       "options": { "baseURL": "http://192.168.0.78:8080/v1" },
       "models": {
-        "your-model-id": {
+        "Qwen3.8-27B": {
           "id": "unsloth/Qwen3.8-27B-GGUF:UD-IQ4_XS",
           "name": "unsloth/Qwen3.8-27B-GGUF:UD-IQ4_XS",
-          "limit": { "context": 81920, "output": 8192 }
+          "limit": { "context": 81920, "output": 16384 }
+        },
+        "Qwen3.6-35B-A3B": {
+          "id": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:IQ4_XS",
+          "name": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:IQ4_XS",
+          "limit": { "context": 131072, "output": 16384 }
         }
       }
     }

@@ -1,4 +1,5 @@
-import { Slex } from "../src/index";
+import { CommonEngine, Slex, Token as SlexToken } from "../src/";
+import { execute } from "./_common";
 
 // prettier-ignore
 enum TokenType {
@@ -40,6 +41,9 @@ enum TokenType {
 
     SINGLE_LINE_COMMENT, MULTI_LINE_COMMENT
 }
+
+export type TokenMetadata = {};
+export type Token = SlexToken<TokenType, TokenMetadata>;
 
 const lexerGenerator = new Slex<TokenType, { sourcePath: string }>({
   EOF_TYPE: TokenType.EOF,
@@ -167,17 +171,7 @@ broadcast(factorial(5));
 `;
 
 const lexer = lexerGenerator.generate(stacktrace_example, () => ({ sourcePath: "stacktrace.example" }));
-
-while (lexer.hasNextToken()) {
-  const token = lexer.getNextToken();
-  console.log(
-    "Token: " +
-      TokenType[token.type] +
-      ". Lexeme: " +
-      token.lexeme +
-      ". Column: " +
-      token.column +
-      ". Line: " +
-      token.line
-  );
-}
+const compiledLexer = lexerGenerator
+  .compile()
+  .generate(stacktrace_example, () => ({ sourcePath: "stacktrace.example" }));
+execute<TokenType, TokenMetadata>(lexer, compiledLexer, TokenType);

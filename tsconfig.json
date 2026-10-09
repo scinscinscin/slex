@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "es2020",
     "module": "nodenext",
     "lib": ["dom", "es6", "es2023", "esnext.asynciterable"],
     "skipLibCheck": true,

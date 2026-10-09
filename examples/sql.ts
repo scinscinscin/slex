@@ -1,4 +1,5 @@
-import { Slex, Token as SlexToken } from "../src/";
+import { CommonEngine, Slex, Token as SlexToken } from "../src/";
+import { execute } from "./_common";
 
 // prettier-ignore
 export enum TokenType {
@@ -100,17 +101,5 @@ lexerGenerator.addRule("exists", "(exists)^", TokenType.EXISTS);
 
 const test = "SELECT * from users;";
 const lexer = lexerGenerator.generate(test, () => ({}));
-
-while (lexer.hasNextToken()) {
-  const token = lexer.getNextToken();
-  console.log(
-    "Token: " +
-      TokenType[token.type] +
-      ". Lexeme: " +
-      token.lexeme +
-      ". Column: " +
-      token.column +
-      ". Line: " +
-      token.line
-  );
-}
+const compiledLexer = lexerGenerator.compile().generate(test, () => ({}));
+execute<TokenType, TokenMetadata>(lexer, compiledLexer, TokenType);

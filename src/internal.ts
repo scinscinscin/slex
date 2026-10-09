@@ -1,4 +1,5 @@
 import { initializeCharacter } from "./utils/Character";
+import { NFAFragment, NFAOptions, NFAState, createNFAState } from "./nfa";
 const Character = initializeCharacter({});
 
 export class RegexEngineParsingResult {
@@ -47,6 +48,24 @@ export abstract class RegexNode<TokenType> {
     environment: Map<string, RegexNode<TokenType>>,
     modifiers: RegexNodeModifiers
   ): string[];
+
+  public abstract toNFA(options: NFAOptions): NFAFragment;
+
+  public getCharacterTest(options: NFAOptions): ((ch: string) => boolean) | null {
+    return null;
+  }
+
+  public clearTokenType(): void {
+    this.emit = null;
+  }
+
+  public clearTransformer(): void {
+    this.transformer = null;
+  }
+
+  public replaceVariables(_replacer: (name: string) => RegexNode<TokenType>): RegexNode<TokenType> {
+    return this;
+  }
 }
 
 class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
@@ -83,6 +102,20 @@ class RegexConcatenationNode<TokenType> extends RegexNode<TokenType> {
 
     return caches;
   }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    const fragments = this.nodes.map((n) => n.toNFA(options));
+    for (let i = 0; i < fragments.length - 1; i++) {
+      fragments[i].accept.epsilon.push(fragments[i + 1].start);
+    }
+    return { start: fragments[0].start, accept: fragments[fragments.length - 1].accept };
+  }
+
+  public replaceVariables(replacer: (name: string) => RegexNode<TokenType>): RegexNode<TokenType> {
+    const newNodes = this.nodes.map((n) => n.replaceVariables(replacer));
+    if (newNodes.length > 1) return new RegexConcatenationNode(newNodes);
+    return newNodes[0];
+  }
 }
 
 class RegexEitherNode<TokenType> extends RegexNode<TokenType> {
@@ -110,6 +143,22 @@ class RegexEitherNode<TokenType> extends RegexNode<TokenType> {
     let matches: string[] = [];
     for (const node of this.nodes) matches.push(...node.getMatches(restString, environment, modifiers));
     return matches;
+  }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    const fragments = this.nodes.map((n) => n.toNFA(options));
+    const start = createNFAState();
+    const accept = createNFAState();
+    for (const f of fragments) {
+      start.epsilon.push(f.start);
+      f.accept.epsilon.push(accept);
+    }
+    return { start, accept };
+  }
+
+  public replaceVariables(replacer: (name: string) => RegexNode<TokenType>): RegexNode<TokenType> {
+    const newNodes = this.nodes.map((n) => n.replaceVariables(replacer));
+    return new RegexEitherNode(newNodes);
   }
 }
 
@@ -139,6 +188,36 @@ class RegexLiteralNode<TokenType> extends RegexNode<TokenType> {
     else if (modifiers.negated === true && getStr(ch) !== getStr(this.ch)) matches.push(ch);
 
     return matches;
+  }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    const start = createNFAState();
+    const accept = createNFAState();
+    if (options.caseInsensitive) {
+      const lower = this.ch.toLowerCase();
+      const upper = this.ch.toUpperCase();
+      start.transitions.push({
+        key: "ci:char:" + this.ch,
+        test: (ch: string) => ch === lower || ch === upper,
+        target: accept,
+      });
+    } else {
+      start.transitions.push({
+        key: "char:" + this.ch,
+        test: (ch: string) => ch === this.ch,
+        target: accept,
+      });
+    }
+    return { start, accept };
+  }
+
+  public getCharacterTest(options: NFAOptions): (ch: string) => boolean {
+    if (options.caseInsensitive) {
+      const lower = this.ch.toLowerCase();
+      const upper = this.ch.toUpperCase();
+      return (ch: string) => ch === lower || ch === upper;
+    }
+    return (ch: string) => ch === this.ch;
   }
 }
 
@@ -171,6 +250,32 @@ export class RegexIntrinsicNode<TokenType> extends RegexNode<TokenType> {
 
     return matches;
   }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    const start = createNFAState();
+    const accept = createNFAState();
+    if (options.caseInsensitive) {
+      start.transitions.push({
+        key: "ci:intrinsic:" + this.intrinsicName,
+        test: (ch: string) => this.calculator(ch.toLowerCase(), false),
+        target: accept,
+      });
+    } else {
+      start.transitions.push({
+        key: "intrinsic:" + this.intrinsicName,
+        test: (ch: string) => this.calculator(ch, false),
+        target: accept,
+      });
+    }
+    return { start, accept };
+  }
+
+  public getCharacterTest(options: NFAOptions): (ch: string) => boolean {
+    if (options.caseInsensitive) {
+      return (ch: string) => this.calculator(ch.toLowerCase(), false);
+    }
+    return (ch: string) => this.calculator(ch, false);
+  }
 }
 
 class RegexVariableNode<TokenType> extends RegexNode<TokenType> {
@@ -195,12 +300,97 @@ class RegexVariableNode<TokenType> extends RegexNode<TokenType> {
     const rootNode = environment.get(this.variableName);
     return rootNode!.getMatches(restString, environment, modifiers);
   }
+
+  public toNFA(_options: NFAOptions): NFAFragment {
+    throw new Error("Variable '" + this.variableName + "' must be resolved before NFA construction");
+  }
+
+  public replaceVariables(replacer: (name: string) => RegexNode<TokenType>): RegexNode<TokenType> {
+    return replacer(this.variableName);
+  }
+}
+
+class RegexCharClassNode<TokenType> extends RegexNode<TokenType> {
+  private ranges: [string, string][] = [];
+  private singles: string[] = [];
+
+  public constructor(public readonly content: string) {
+    super();
+    this.parseContent();
+  }
+
+  private parseContent() {
+    const chars = this.content;
+    for (let i = 0; i < chars.length; i++) {
+      if (i + 2 < chars.length && chars.charAt(i + 1) === "-") {
+        this.ranges.push([chars.charAt(i), chars.charAt(i + 2)]);
+        i += 2;
+      } else {
+        this.singles.push(chars.charAt(i));
+      }
+    }
+  }
+
+  public test(ch: string): boolean {
+    for (const s of this.singles) {
+      if (ch === s) return true;
+    }
+    for (const [lo, hi] of this.ranges) {
+      if (ch >= lo && ch <= hi) return true;
+    }
+    return false;
+  }
+
+  public toString(): string {
+    return "[" + this.content + "]";
+  }
+
+  public getMatches(
+    restString: string,
+    _environment: Map<string, RegexNode<TokenType>>,
+    modifiers: RegexNodeModifiers
+  ): string[] {
+    if (restString.length === 0) return [];
+    const ch = restString.charAt(0);
+    const testCh = modifiers.caseInsensitive ? ch.toLowerCase() : ch;
+    const matches: string[] = [];
+    if (modifiers.negated === false && this.test(testCh)) matches.push(ch);
+    else if (modifiers.negated === true && !this.test(testCh)) matches.push(ch);
+    return matches;
+  }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    const start = createNFAState();
+    const accept = createNFAState();
+    if (options.caseInsensitive) {
+      start.transitions.push({
+        key: "ci:class:" + this.content,
+        test: (ch: string) => this.test(ch.toLowerCase()),
+        target: accept,
+      });
+    } else {
+      start.transitions.push({
+        key: "class:" + this.content,
+        test: (ch: string) => this.test(ch),
+        target: accept,
+      });
+    }
+    return { start, accept };
+  }
+
+  public getCharacterTest(options: NFAOptions): (ch: string) => boolean {
+    if (options.caseInsensitive) {
+      return (ch: string) => this.test(ch.toLowerCase());
+    }
+    return (ch: string) => this.test(ch);
+  }
 }
 
 enum RegexGroupingNodeModifiers {
   NONE,
   NONE_OR_MORE,
   ONE_OR_MORE,
+  OPTIONAL,
   NEGATION,
   CASE_INSENSITIVE,
 }
@@ -227,9 +417,11 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
         ? "+"
         : this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE
           ? "*"
-          : this.modifier === RegexGroupingNodeModifiers.CASE_INSENSITIVE
-            ? "^"
-            : "")
+          : this.modifier === RegexGroupingNodeModifiers.OPTIONAL
+            ? "?"
+            : this.modifier === RegexGroupingNodeModifiers.CASE_INSENSITIVE
+              ? "^"
+              : "")
     );
   }
 
@@ -241,9 +433,17 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
     const initialMatches: string[] = this.internalNode.getMatches(restString, environment, modifiers);
 
     if (initialMatches.length === 0) {
-      if (this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE) initialMatches.push("");
+      if (
+        this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE ||
+        this.modifier === RegexGroupingNodeModifiers.OPTIONAL
+      )
+        initialMatches.push("");
       return initialMatches;
-    } else if (this.modifier === RegexGroupingNodeModifiers.NONE) return initialMatches;
+    } else if (
+      this.modifier === RegexGroupingNodeModifiers.NONE ||
+      this.modifier === RegexGroupingNodeModifiers.OPTIONAL
+    )
+      return initialMatches;
 
     let matches = initialMatches;
 
@@ -279,6 +479,64 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
       return this.internalNode.getMatches(restString, environment, { ...modifiers, caseInsensitive: true });
 
     return this._getMatches(restString, environment, modifiers);
+  }
+
+  public toNFA(options: NFAOptions): NFAFragment {
+    if (this.modifier === RegexGroupingNodeModifiers.NEGATION) {
+      const test = this.internalNode.getCharacterTest(options);
+      if (test === null) {
+        throw new Error("Negation can only be applied to single-character patterns");
+      }
+      const start = createNFAState();
+      const accept = createNFAState();
+      start.transitions.push({
+        key: "neg:" + this.internalNode.toString(),
+        test: (ch: string) => !test(ch),
+        target: accept,
+      });
+      return { start, accept };
+    }
+
+    if (this.modifier === RegexGroupingNodeModifiers.CASE_INSENSITIVE) {
+      return this.internalNode.toNFA({ ...options, caseInsensitive: true });
+    }
+
+    const inner = this.internalNode.toNFA(options);
+
+    if (this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE) {
+      const start = createNFAState();
+      const accept = createNFAState();
+      start.epsilon.push(inner.start);
+      start.epsilon.push(accept);
+      inner.accept.epsilon.push(inner.start);
+      inner.accept.epsilon.push(accept);
+      return { start, accept };
+    }
+
+    if (this.modifier === RegexGroupingNodeModifiers.ONE_OR_MORE) {
+      const start = createNFAState();
+      const accept = createNFAState();
+      start.epsilon.push(inner.start);
+      inner.accept.epsilon.push(inner.start);
+      inner.accept.epsilon.push(accept);
+      return { start, accept };
+    }
+
+    if (this.modifier === RegexGroupingNodeModifiers.OPTIONAL) {
+      const start = createNFAState();
+      const accept = createNFAState();
+      start.epsilon.push(inner.start);
+      start.epsilon.push(accept);
+      inner.accept.epsilon.push(accept);
+      return { start, accept };
+    }
+
+    return inner;
+  }
+
+  public replaceVariables(replacer: (name: string) => RegexNode<TokenType>): RegexNode<TokenType> {
+    const newInternal = this.internalNode.replaceVariables(replacer);
+    return new RegexGroupingNode(newInternal, this.modifier);
   }
 }
 
@@ -343,6 +601,9 @@ export class RegexParser<TokenType> {
         } else if (nextTokenType === RegexTokenType.PLUS) {
           modifier = RegexGroupingNodeModifiers.ONE_OR_MORE;
           this.currentTokenIndex++;
+        } else if (nextTokenType === RegexTokenType.QUESTION) {
+          modifier = RegexGroupingNodeModifiers.OPTIONAL;
+          this.currentTokenIndex++;
         } else if (nextTokenType === RegexTokenType.EXCLAMATION) {
           modifier = RegexGroupingNodeModifiers.NEGATION;
           this.currentTokenIndex++;
@@ -362,6 +623,11 @@ export class RegexParser<TokenType> {
       case RegexTokenType.VARIABLE: {
         this.currentTokenIndex++;
         return new RegexVariableNode(currentToken.value);
+      }
+
+      case RegexTokenType.CHAR_CLASS: {
+        this.currentTokenIndex++;
+        return new RegexCharClassNode(currentToken.value);
       }
 
       default: {
@@ -387,10 +653,12 @@ enum RegexTokenType {
   ASTERISK,
   EXCLAMATION,
   PLUS,
+  QUESTION,
   CARAT,
   VARIABLE,
   LPAREN,
   RPAREN,
+  CHAR_CLASS,
 }
 
 class RegexToken {
@@ -436,6 +704,9 @@ export class RegexLexer {
       } else if (currentCharacter === "!") {
         this.tokens.push(new RegexToken(RegexTokenType.EXCLAMATION, currentCharacter));
         this.index++;
+      } else if (currentCharacter === "?") {
+        this.tokens.push(new RegexToken(RegexTokenType.QUESTION, currentCharacter));
+        this.index++;
       } else if (currentCharacter === "(") {
         this.tokens.push(new RegexToken(RegexTokenType.LPAREN, currentCharacter));
         this.index++;
@@ -445,6 +716,15 @@ export class RegexLexer {
       } else if (currentCharacter === "^") {
         this.tokens.push(new RegexToken(RegexTokenType.CARAT, currentCharacter));
         this.index++;
+      } else if (currentCharacter === "[") {
+        this.index++; // skip [
+        let classContent = "";
+        while (this.index < this.expression.length && this.expression.charAt(this.index) !== "]") {
+          classContent += this.expression.charAt(this.index);
+          this.index++;
+        }
+        this.index++; // skip ]
+        this.tokens.push(new RegexToken(RegexTokenType.CHAR_CLASS, classContent));
       } else if (currentCharacter === "$") {
         if (
           (this.expression.length > this.index + 1 && this.expression.charAt(this.index + 1) != "{") ||
@@ -452,6 +732,9 @@ export class RegexLexer {
         ) {
           // capture whatever the next character is as is
           this.tokens.push(new RegexToken(RegexTokenType.LITERAL, this.expression.charAt(this.index + 1)));
+          this.index += 2;
+        } else if (this.isNextPipeOrEof(this.index + 2)) {
+          this.tokens.push(new RegexToken(RegexTokenType.LITERAL, "}"));
           this.index += 2;
         } else {
           // we have a regex variable so we need to handle until the matching }
@@ -485,5 +768,15 @@ export class RegexLexer {
     }
 
     return this.tokens;
+  }
+
+  private isNextPipeOrEof(start: number): boolean {
+    for (let i = start + 1; i < this.expression.length; i++) {
+      const ch = this.expression.charAt(i);
+      if (ch === "|") return true;
+      if (ch === "}") return false;
+    }
+
+    return true;
   }
 }

@@ -1,0 +1,12 @@
+# Dev / source files — not needed at runtime
+src/
+examples/
+test/
+tsconfig.json
+tsconfig.build.json
+AGENTS.md
+.github/
+yarn.lock
+opencode.json
+.gitignore
+.npmignore

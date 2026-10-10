@@ -75,17 +75,17 @@ Token: NUMBER. Lexeme: 456.789. Column: 16. Line: 1
 
 ### Regular Expression Syntax
 
-|     Construct      |                                                    Action                                                    |   Example    |
-| :----------------: | :----------------------------------------------------------------------------------------------------------: | :----------: |
-|   Concatenation    |                           Represents the concatenation of multiple rules together.                           |    $R1R2$    |
-|       Either       |                              Represents possibilities between different rules.                               |  $R1 \| R2$  |
-|    Kleene-star     | Groups multiple rules together and dictates that they may appear zero or multiple times in the input string. |   $(R1)*$    |
-|    Kleene-plus     |     Groups multiple rules together and dictate that they must appear at least once in the input string.      |   $(R1)+$    |
-|      Negation      |  Groups multiple rules together and negates them. This is only meaningful with groups of single characters.  |   $(R1)!$    |
-| Case insensitivity |                       Groups multiple rules together and makes them case insensitive.                        |   $(R1)$^    |
-|      Grouping      |                     Groups multiple rules together so they are treated as a single rule.                     |    $(R1)$    |
-|      Literal       |                                    Represents a single character literal.                                    |     $a$      |
-|      Variable      |                                    Represents another regular definition.                                    | $\$\{name\}$ |
+|     Construct      |                                                    Action                                                    |  Example   |
+| :----------------: | :----------------------------------------------------------------------------------------------------------: | :--------: |
+|   Concatenation    |                           Represents the concatenation of multiple rules together.                           |   $R1R2$   |
+|       Either       |                              Represents possibilities between different rules.                               | $R1 \| R2$ |
+|    Kleene-star     | Groups multiple rules together and dictates that they may appear zero or multiple times in the input string. |  $(R1)*$   |
+|    Kleene-plus     |     Groups multiple rules together and dictate that they must appear at least once in the input string.      |  $(R1)+$   |
+|      Negation      |  Groups multiple rules together and negates them. This is only meaningful with groups of single characters.  |  $(R1)!$   |
+| Case insensitivity |                       Groups multiple rules together and makes them case insensitive.                        |  $(R1)$^   |
+|      Grouping      |                     Groups multiple rules together so they are treated as a single rule.                     |   $(R1)$   |
+|      Literal       |                                    Represents a single character literal.                                    |    $a$     |
+|      Variable      |                                    Represents another regular definition.                                    | `${name}`  |
 
 For literals, non-alphanumeric characters must be escaped using the $ symbol. Example: to represent the tab character as a character literal, it must be encoded in the regular expression as "$\t"
 
@@ -124,10 +124,14 @@ Slex contains built-in unicode character classes to match frequently used sets o
 -  `generate(input: string, metadataGenerator: () => Metadata): RegexEngine`
    -  `input: string` - the input to be scanned
    -  `metadataGenerator: () => Metadata` - a function which generates the metadata for the emitted token
+-  `compile(): CompiledLexer<TokenType, Metadata>`
+   -  Compiles the regular expressions into a single detemrinistic finite automation (DFA)
+   -  DFA compilation offers a 60-90% performance improvement over the regular backtracking engine at the cost of initial compilation time.
+   -  The returned object has a `generate(input: string, metadataGenerator: () => Metadata): DFAEngine` method which can be used similarly to `Slex<TokenType, Metadata>`.
 
 ---
 
-### `RegexEngine<TokenType, Metadata>` class
+### `RegexEngine<TokenType, Metadata>` and `DFAEngine<TokenType, Metadata>` classes
 
 **Methods**
 
@@ -138,6 +142,8 @@ Slex contains built-in unicode character classes to match frequently used sets o
  - `getNextToken(): Token<TokenType, Metadata>` - returns the next token in the input, consuming it in the process
    - this method throws an Error if the scanner failed to match any tokens
  - `tryGetNextToken(): TokenResult<TokenType, Metadata>` - returns the next token in the input, consuming it in the process
+
+Both classes adhere to the `CommonEngine<TokenType, Metadata>` interface.
 
 ---
 

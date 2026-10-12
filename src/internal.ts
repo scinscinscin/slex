@@ -439,29 +439,45 @@ class RegexGroupingNode<TokenType> extends RegexNode<TokenType> {
       )
         initialMatches.push("");
       return initialMatches;
-    } else if (
-      this.modifier === RegexGroupingNodeModifiers.NONE ||
-      this.modifier === RegexGroupingNodeModifiers.OPTIONAL
-    )
+    } else if (this.modifier === RegexGroupingNodeModifiers.NONE)
       return initialMatches;
+    else if (this.modifier === RegexGroupingNodeModifiers.OPTIONAL)
+      return [...initialMatches, ""];
 
-    let matches = initialMatches;
+    // accumulate every length the group can match so that surrounding
+    // concatenations can try shorter matches if the longest one leaves
+    // nothing for the rest of the pattern to match
+    let matches: string[] = [...initialMatches];
+    let frontier: string[] = initialMatches;
+
+    // zero repetitions of NONE_OR_MORE always match the empty string;
+    // only add it to the accumulated matches, not the frontier, so the
+    // loop does not re-derive the initial matches
+    if (this.modifier === RegexGroupingNodeModifiers.NONE_OR_MORE) matches.push("");
 
     // handle matching for NONE_OR_MORE or ONE_OR_MORE
     while (true) {
       const nextMatches: string[] = [];
+      const seen = new Set<string>();
 
-      for (const match of matches) {
+      for (const match of frontier) {
         const rest: string = restString.slice(match.length);
         if (rest.length === 0) continue;
 
         const nextMatch = this.internalNode.getMatches(rest, environment, modifiers);
-        nextMatches.push(...nextMatch.map((m) => match + m));
+        for (const m of nextMatch) {
+          const combined = match + m;
+          if (!seen.has(combined)) {
+            seen.add(combined);
+            nextMatches.push(combined);
+          }
+        }
       }
 
       if (nextMatches.length === 0) break;
 
-      matches = nextMatches;
+      matches.push(...nextMatches);
+      frontier = nextMatches;
     }
 
     return matches;
@@ -764,6 +780,7 @@ export class RegexLexer {
             " in expression: " +
             this.expression
         );
+        this.index++;
       }
     }
 

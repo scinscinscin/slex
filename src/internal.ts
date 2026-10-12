@@ -780,6 +780,7 @@ export class RegexLexer {
             " in expression: " +
             this.expression
         );
+        this.index++;
       }
     }
 

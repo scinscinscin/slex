@@ -19,5 +19,14 @@
         }
       }
     }
+  },
+  "mcp": {
+    "searxng": {
+      "type": "local",
+      "command": ["npx", "-y", "@nitish-raj/searxng-mcp-bridge"],
+      "environment": {
+        "SEARXNG_INSTANCE_URL": "http://192.168.0.109:6967"
+      }
+    }
   }
 }
